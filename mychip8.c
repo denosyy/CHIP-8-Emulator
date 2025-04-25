@@ -6,6 +6,10 @@
 #define MEMORY_SIZE 4096
 #define MEMORY_MASK (MEMORY_SIZE - 1)
 
+void chip8_init(void);
+void chip8_execute_instruction(void);
+void chip8_shutdown(void);
+void chip8_reset(void);
 extern uint8_t chip8_mem_read(uint16_t addr);
 extern void chip8_mem_write(uint16_t addr, uint8_t val);
 extern uint8_t chip8_register_read(uint8_t reg);
@@ -15,13 +19,11 @@ extern void chip8_mem_clear(void);
 extern int chip8_draw_sprite(uint16_t addr, uint8_t x, uint8_t y, uint8_t height);
 extern void chip8_mem_reset(void);
 
+
 /* Key statuses are defined as registers 0x00-0x0F */
 #define CHIP8_REG_DT        0x10
 #define CHIP8_REG_ST        0x11
 
-uint8_t memory[MEMORY_SIZE];
-uint32_t framebuffer[64 * 32];
-uint8_t dt, st; //delay timer, sound timer
 uint8_t buttons[16];
 uint8_t keymap[16];
 uint16_t V[16]; //general registers
@@ -31,7 +33,6 @@ uint16_t stack[16]; //stack
 uint16_t stack_ptr; //index pointer
 uint16_t I;
 uint16_t opcode;
-bool drawflag;
 
 const uint8_t font[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0,
@@ -53,43 +54,48 @@ const uint8_t font[80] = {
 };
 
 
-
-
 void chip8_init(void) {
     PC = 0x200;
     opcode = 0;
     I = 0;
     stack_ptr = 0;
-    dt = 0;
-    st = 0;
+    chip8_register_write(CHIP8_REG_DT, 0);
+    chip8_register_write(CHIP8_REG_ST, 0);
     memset(stack, 0, 16);
-    memset(memory, 0, 4096);
     memset(V, 0, 16);
-    memset(framebuffer, 0, 2048);
     memset(buttons, 0, 16);
-    memcpy(memory, font, 80 * sizeof(int8_t));
+    chip8_mem_reset();
+    chip8_clear_frame();
+    printf("checkpt \n");
+    chip8_execute_instruction();
 }
 
 void chip8_shutdown(void) {
-
+    chip8_clear_frame();
+    chip8_mem_clear();
 }
 void chip8_execute_instruction(void) {
     uint8_t X, Y, kk, n;
     uint16_t nnn;
     uint32_t i, button_pressed;
-    opcode = memory[PC] << 8 | memory[PC + 1];
+    printf("%u\n", opcode);
+    opcode = chip8_mem_read(PC);
+    opcode <<= 8;
+    opcode |= chip8_mem_read(PC + 1);
+    printf("%u\n", opcode);
     PC += 2;
     X = (opcode & 0x0F00) >> 8;
     Y = (opcode & 0x00F0) >> 4;
     nnn = (opcode & 0x0FFF);
     kk = (opcode & 0x00FF);
     n = (opcode & 0x000F);
+    printf("%u\n", opcode);
     switch (opcode & 0xF000) {
     case 0x0000:
         switch (opcode & 0x00FF) {
             //00E0 - clear screen
         case 0x00E0:
-            memset(framebuffer, 0, 2048);
+            chip8_clear_frame();
             break;
             //00EE - return from subroutine
         case 0x00EE:
@@ -125,11 +131,10 @@ void chip8_execute_instruction(void) {
         break;
     case 0xD000: //DXYN - draw/display
     {
-        uint16_t addr;
-        uint8_t x = V[X];
-        uint8_t y = V[Y];
-        uint8_t height = n;
-        chip8_draw_sprite(addr, x, y, height);
+        uint16_t x = V[X];
+        uint16_t y = V[Y];
+        uint16_t height = n;
+        chip8_draw_sprite(I, x, y, height);
         break;
     }
     case 0x5000: //5XY0 - skips next instruction if VX == VY
@@ -140,7 +145,7 @@ void chip8_execute_instruction(void) {
             //8XY0 - set VX to the value of VY
         case 0x0000:
         {
-            V[X] == V[Y];
+            V[X] = V[Y];
             break;
         }
         //8XY1 - set VX to VX or VY
@@ -202,7 +207,7 @@ void chip8_execute_instruction(void) {
             V[X] <<= 1;
             break;
         }
-        default: printf("Opcode error 8xxx -> % x\n", opcode);
+        default: printf("Opcode error 8xxx -> % x\n", opcode);break;
         }break;
     case 0x9000: //9XY0 - skips the next instruction if VX doesn't equal VY
     {
@@ -239,7 +244,7 @@ void chip8_execute_instruction(void) {
             //FX07 - sets VX to value of the delay timer
         case 0x0007:
         {
-            V[X] = dt;
+            V[X] = chip8_register_read(CHIP8_REG_DT);
             break;
         }
         //FX0A - a key press is expected, then stored in VX
@@ -258,13 +263,13 @@ void chip8_execute_instruction(void) {
         //FX15 - sets delay timer to VX
         case 0x0015:
         {
-            dt = V[X];
+            chip8_register_write(CHIP8_REG_DT, V[X]);
             break;
         }
         //FX18 - sets sound timer to VX
         case 0x0018:
         {
-            st = V[X];
+            chip8_register_write(CHIP8_REG_ST, V[X]);
             break;
         }
         //FX1E - add VX to I
@@ -283,18 +288,19 @@ void chip8_execute_instruction(void) {
         case 0x0033:
         {
             int vX = V[X];
-            memory[I] = (vX - (vX % 100)) / 100;
-            vX -= memory[I] * 100;
-            memory[I + 1] = (vX - (vX % 10)) / 100;
-            vX -= memory[I + 1] * 10;
-            memory[I + 2] = vX;
+            chip8_mem_write(I, (vX - (vX % 100)) / 100);
+            vX -= chip8_mem_read(I) * 100;
+            chip8_mem_write(I + 1, (vX - (vX % 10)) / 10);
+            vX -= chip8_mem_read(I + 1) * 10;
+            chip8_mem_write(I + 2, vX);
             break;
+
         }
         //FX55 - stores V0 to VX in memory starting at address I
         case 0x0055:
         {
             for (uint8_t i = 0; i <= X; ++i) {
-                memory[I + i] = V[i];
+                chip8_mem_write(I + i, V[i]);
             }
             break;
         }
@@ -302,11 +308,12 @@ void chip8_execute_instruction(void) {
         case 0x0065:
         {
             for (uint8_t i = 0; i <= X; ++i) {
-                V[i] = memory[I + i];
+                V[i] = chip8_mem_read(I + i);
             }
             break;
         }
-        }break;
+        default: printf("Opcode error F-> %x\n", opcode);break;
+        }
     default: printf("Opcode error -> %x\n", opcode); break;
     }
 }
@@ -316,23 +323,14 @@ void chip8_reset(void) {
     opcode = 0;
     I = 0;
     stack_ptr = 0;
-    dt = 0;
-    st = 0;
+    chip8_register_write(CHIP8_REG_DT, 0);
+    chip8_register_write(CHIP8_REG_ST, 0);
     memset(stack, 0, 16);
-    memset(memory, 0, 4096);
+    chip8_mem_reset();
     memset(V, 0, 16);
-    memset(framebuffer, 0, 2048);
     memset(buttons, 0, 16);
-    memcpy(memory, font, 80 * sizeof(int8_t));
 }
 
-int WinMain(int argc, char* argv[]) {
-    chip8_init();
-    while (PC < 4096) {
-        chip8_execute_instruction();
-    }
-    chip8_shutdown();
-    return 0;
-}
+
 
 
