@@ -58,7 +58,7 @@ const uint8_t font[80] = {
 void chip8_init(void) {
     PC = 0x200;
     opcode = 0;
-    index_register = 0;
+    I = 0;
     stack_ptr = 0;
     dt = 0;
     st = 0;
@@ -209,10 +209,108 @@ void chip8_execute_instruction(void) {
         if (V[X] != V[Y]) PC += 2;
         break;
     }
-
+    case 0xB000: //BNNN - jumps to address NNN plus V0
+    {
+        PC = (nnn)+V[0x0];
+        break;
     }
-
+    case 0xC000: //CXNN - set VX to a random number, masked by NN
+    {
+        V[X] = (rand() % 0x100) & (kk);
+        break;
+    }
+    case 0xE000:
+        switch (kk) {
+            //EX9E - skips next instruction if the key stored in VX is pressed
+        case 0x009E:
+        {
+            if (buttons[V[X]] != 0) PC += 2;
+            break;
+        }
+        //EXA1 - skips next instruction if the key stored in VX isn't pressed
+        case 0x00A1:
+        {
+            if (buttons[V[X]] == 0) PC += 2;
+            break;
+        }
+        }break;
+    case 0xF000: 
+        switch (kk) {
+            //FX07 - sets VX to value of the delay timer
+        case 0x0007:
+        {
+            V[X] = dt;
+            break;
+        }
+        //FX0A - a key press is expected, then stored in VX
+        case 0x000A:
+        {
+            button_pressed = 0;
+            for (i = 0; i < 16; i++) {
+                if (buttons[i]) {
+                    button_pressed = 1;
+                    V[X] = i;
+                }
+            }
+            if (button_pressed == 0) PC -= 2;
+            break;
+        }
+        //FX15 - sets delay timer to VX
+        case 0x0015:
+        {
+            dt = V[X];
+            break;
+        }
+        //FX18 - sets sound timer to VX
+        case 0x0018:
+        {
+            st = V[X];
+            break;
+        }
+        //FX1E - add VX to I
+        case 0x001E:
+        {
+            I = I + V[X];
+            break;
+        }
+        //FX29 - set I to the location of the sprite for the character in VX
+        case 0x0029:
+        {
+            I = V[X] * 5;
+            break;
+        }
+        //FX33 - stores the binary-coded representation of VX at the addresses I, I + 1, I + 2
+        case 0x0033:
+        {
+            int vX = V[X];
+            memory[I] = (vX - (vX % 100)) / 100;
+            vX -= memory[I] * 100;
+            memory[I + 1] = (vX - (vX % 10)) / 100;
+            vX -= memory[I + 1] * 10;
+            memory[I + 2] = vX;
+            break;
+        }
+        //FX55 - stores V0 to VX in memory starting at address I
+        case 0x0055:
+        {
+            for (uint8_t i = 0; i <= X; ++i) {
+                memory[I + i] = V[i];
+            }
+            break;
+        }
+        //FX65
+        case 0x0065:
+        {
+            for (uint8_t i = 0; i <= X; ++i) {
+                V[i] = memory[I + i];
+            }
+            break;
+        }
+        }break;
+    default: printf("Opcode error -> %x\n", opcode); break;
+    }
 }
+
 void chip8_reset(void) {
     PC = 0x200;
     opcode = 0;
