@@ -29,7 +29,7 @@ uint16_t PC; //program counter
 uint8_t SP; //stack pointer
 uint16_t stack[16]; //stack
 uint16_t stack_ptr; //index pointer
-uint16_t index_register;
+uint16_t I;
 uint16_t opcode;
 bool drawflag;
 
@@ -121,7 +121,7 @@ void chip8_execute_instruction(void) {
         V[X] += kk;
         break;
     case 0xA000: //ANNN - set index register
-        index_register = nnn;
+        I = nnn;
         break;
     case 0xD000: //DXYN - draw/display
     {
@@ -176,7 +176,7 @@ void chip8_execute_instruction(void) {
         case 0x0005:
         {
             if (V[X] > V[Y]) V[0xF] = 1;
-            else V(0xF) = 0;
+            else V[0xF] = 0;
             V[X] -= V[Y];
             break;
         }
@@ -234,7 +234,7 @@ void chip8_execute_instruction(void) {
             break;
         }
         }break;
-    case 0xF000: 
+    case 0xF000:
         switch (kk) {
             //FX07 - sets VX to value of the delay timer
         case 0x0007:
@@ -314,7 +314,7 @@ void chip8_execute_instruction(void) {
 void chip8_reset(void) {
     PC = 0x200;
     opcode = 0;
-    index_register = 0;
+    I = 0;
     stack_ptr = 0;
     dt = 0;
     st = 0;
