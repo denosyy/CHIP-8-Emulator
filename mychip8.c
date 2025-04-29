@@ -25,13 +25,11 @@ extern void chip8_mem_reset(void);
 #define CHIP8_REG_ST        0x11
 
 uint8_t buttons[16];
-uint8_t keymap[16];
-uint16_t V[16]; //general registers
+uint8_t V[16]; //general registers
 uint16_t PC; //program counter
+uint16_t I; //index ptr
 uint8_t SP; //stack pointer
 uint16_t stack[16]; //stack
-uint16_t stack_ptr; //index pointer
-uint16_t I;
 uint16_t opcode;
 
 const uint8_t font[80] = {
@@ -55,19 +53,16 @@ const uint8_t font[80] = {
 
 
 void chip8_init(void) {
+    chip8_mem_reset();
     PC = 0x200;
     opcode = 0;
     I = 0;
-    stack_ptr = 0;
+    SP = 0;
     chip8_register_write(CHIP8_REG_DT, 0);
     chip8_register_write(CHIP8_REG_ST, 0);
-    memset(stack, 0, 16);
-    memset(V, 0, 16);
-    memset(buttons, 0, 16);
-    chip8_mem_reset();
-    chip8_clear_frame();
-    printf("checkpt \n");
-    chip8_execute_instruction();
+    for (int i = 0; i < 16; i++) { V[i] = 0; }
+    //for (int i = 0; i < 16; i++) { buttons[i] = 0; }
+    //chip8_clear_frame();
 }
 
 void chip8_shutdown(void) {
@@ -77,19 +72,14 @@ void chip8_shutdown(void) {
 void chip8_execute_instruction(void) {
     uint8_t X, Y, kk, n;
     uint16_t nnn;
-    uint32_t i, button_pressed;
-    printf("%u\n", opcode);
-    opcode = chip8_mem_read(PC);
-    opcode <<= 8;
-    opcode |= chip8_mem_read(PC + 1);
-    printf("%u\n", opcode);
+    uint32_t button_pressed;
+    opcode = chip8_mem_read(PC) << 8 | chip8_mem_read(PC + 1);
     PC += 2;
-    X = (opcode & 0x0F00) >> 8;
-    Y = (opcode & 0x00F0) >> 4;
+    X = (opcode >> 8) & 0x0F;
+    Y = (opcode >> 4) & 0x0F;
     nnn = (opcode & 0x0FFF);
     kk = (opcode & 0x00FF);
     n = (opcode & 0x000F);
-    printf("%u\n", opcode);
     switch (opcode & 0xF000) {
     case 0x0000:
         switch (opcode & 0x00FF) {
@@ -100,18 +90,17 @@ void chip8_execute_instruction(void) {
             //00EE - return from subroutine
         case 0x00EE:
         {
-            --stack_ptr;
-            PC = stack[stack_ptr];
+            SP--;
+            PC = stack[SP];
             break;
         }
-        default: printf("Opcode error 0xxx -> %x\n", opcode);
         }break;
     case 0x1000: //1NNN - jump to address nnn
         PC = nnn;
         break;
     case 0x2000: //2NNN - call subroutine at nnn
-        stack[stack_ptr] = PC;
-        ++stack_ptr;
+        stack[SP] = PC;
+        SP++;
         PC = nnn;
         break;
     case 0x3000: //3XNN - skip next instruction if VX == kk
@@ -131,10 +120,7 @@ void chip8_execute_instruction(void) {
         break;
     case 0xD000: //DXYN - draw/display
     {
-        uint16_t x = V[X];
-        uint16_t y = V[Y];
-        uint16_t height = n;
-        chip8_draw_sprite(I, x, y, height);
+        chip8_draw_sprite(I, V[X], V[Y], n);
         break;
     }
     case 0x5000: //5XY0 - skips next instruction if VX == VY
@@ -151,52 +137,52 @@ void chip8_execute_instruction(void) {
         //8XY1 - set VX to VX or VY
         case 0x0001:
         {
-            V[X] |= V[Y];
+            V[X] = V[X] | V[Y];
             break;
         }
         //8XY2 - set VY to VX and VY
         case 0x0002:
         {
-            V[X] &= V[Y];
+            V[X] = V[X] & V[Y];
             break;
         }
         //8XY3 - set VY to VX xor VY
         case 0x0003:
         {
-            V[X] ^= V[Y];
+            V[X] = V[X] ^ V[Y];
             break;
         }
         //8XY4 - adds VX to VY; VF is set to 1 if there's a carry and 0 if there isn't
         case 0x0004:
         {
-            int i = (int)(V[X]) + (int)(V[Y]);
-            if (i > 255)
-                V[0xF] = 1;
+            if ((V[X] + V[Y]) > 255)
+                V[15] = 1;
             else
-                V[0xF] = 0;
-            V[X] = i & 0xFF;
+                V[15] = 0;
+
+            V[X] += V[Y];
             break;
         }
         //8XY5 - VY is subtracted from VX; VF is set to 0 when there's a borrow, and 1 when there isn't
         case 0x0005:
         {
-            if (V[X] > V[Y]) V[0xF] = 1;
-            else V[0xF] = 0;
+            if (V[X] > V[Y]) V[15] = 1;
+            else V[15] = 0;
             V[X] -= V[Y];
             break;
         }
         //8XY6 - shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift
         case 0x0006:
         {
-            V[0xF] = V[X] & 1;
-            V[X] >>= 1;
+            V[15] = V[X] & 0x1;
+            V[X] = V[X] >> 1;
             break;
         }
         //8XY7 - set VX to VY minus VX. VF is set to 0 when there's a borrow and 1 when there isn't
         case 0x0007:
         {
-            if (V[Y] > V[X]) V[0xF] = 1;
-            else V[0xF] = 0;
+            if (V[Y] > V[X]) V[15] = 1;
+            else V[15] = 0;
             V[X] = V[Y] - V[X];
             break;
         }
@@ -207,11 +193,11 @@ void chip8_execute_instruction(void) {
             V[X] <<= 1;
             break;
         }
-        default: printf("Opcode error 8xxx -> % x\n", opcode);break;
-        }break;
+        default: break;
+        }
     case 0x9000: //9XY0 - skips the next instruction if VX doesn't equal VY
     {
-        if (V[X] != V[Y]) PC += 2;
+        if (V[X] != V[Y]) { PC += 2; }
         break;
     }
     case 0xB000: //BNNN - jumps to address NNN plus V0
@@ -221,7 +207,7 @@ void chip8_execute_instruction(void) {
     }
     case 0xC000: //CXNN - set VX to a random number, masked by NN
     {
-        V[X] = (rand() % 0x100) & (kk);
+        V[X] = (rand() % 256) & (kk);
         break;
     }
     case 0xE000:
@@ -250,14 +236,13 @@ void chip8_execute_instruction(void) {
         //FX0A - a key press is expected, then stored in VX
         case 0x000A:
         {
-            button_pressed = 0;
-            for (i = 0; i < 16; i++) {
-                if (buttons[i]) {
-                    button_pressed = 1;
-                    V[X] = i;
-                }
+            V[X] = 0;
+            int value;
+            for (int i = 0; i < 16; i++) {
+                value = chip8_register_read(i);
+                if (value != 0) { V[X] = value; }
             }
-            if (button_pressed == 0) PC -= 2;
+            if (value == 0) { PC += 2; }
             break;
         }
         //FX15 - sets delay timer to VX
@@ -287,12 +272,12 @@ void chip8_execute_instruction(void) {
         //FX33 - stores the binary-coded representation of VX at the addresses I, I + 1, I + 2
         case 0x0033:
         {
-            int vX = V[X];
-            chip8_mem_write(I, (vX - (vX % 100)) / 100);
-            vX -= chip8_mem_read(I) * 100;
-            chip8_mem_write(I + 1, (vX - (vX % 10)) / 10);
-            vX -= chip8_mem_read(I + 1) * 10;
-            chip8_mem_write(I + 2, vX);
+            uint8_t num = V[X];
+            chip8_mem_write((I + 2), num % 10);
+            num /= 10;
+            chip8_mem_write((I + 1), num % 10);
+            num /= 10;
+            chip8_mem_write((I), num % 10);
             break;
 
         }
@@ -312,23 +297,26 @@ void chip8_execute_instruction(void) {
             }
             break;
         }
-        default: printf("Opcode error F-> %x\n", opcode);break;
+        break;
         }
-    default: printf("Opcode error -> %x\n", opcode); break;
+    default: break;
     }
 }
 
 void chip8_reset(void) {
+    chip8_mem_reset();
     PC = 0x200;
     opcode = 0;
     I = 0;
-    stack_ptr = 0;
+    SP = 0;
     chip8_register_write(CHIP8_REG_DT, 0);
     chip8_register_write(CHIP8_REG_ST, 0);
-    memset(stack, 0, 16);
-    chip8_mem_reset();
-    memset(V, 0, 16);
-    memset(buttons, 0, 16);
+    //memset(stack, 0, 16);
+    for (int i = 0; i < 16; i++) { V[i] = 0; }
+    for (int i = 0; i < 16; i++) { buttons[i] = 0; }
+    //chip8_mem_reset();
+    //chip8_clear_frame();
+    //memset(buttons, 0, 16);
 }
 
 
