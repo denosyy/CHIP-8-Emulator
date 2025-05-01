@@ -215,13 +215,13 @@ void chip8_execute_instruction(void) {
             //EX9E - skips next instruction if the key stored in VX is pressed
         case 0x009E:
         {
-            if (buttons[V[X]] != 0) PC += 2;
+            if (chip8_register_read(V[X])) PC += 2;
             break;
         }
         //EXA1 - skips next instruction if the key stored in VX isn't pressed
         case 0x00A1:
         {
-            if (buttons[V[X]] == 0) PC += 2;
+            if (!chip8_register_read(V[X])) PC += 2;
             break;
         }
         }break;
@@ -243,7 +243,6 @@ void chip8_execute_instruction(void) {
                 if (value != 0) { V[X] = value; }
             }
             if (value == 0) { PC += 2; }
-            break;
         }
         //FX15 - sets delay timer to VX
         case 0x0015:
