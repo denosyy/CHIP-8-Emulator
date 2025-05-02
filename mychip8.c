@@ -29,8 +29,9 @@ uint8_t V[16]; //general registers
 uint16_t PC; //program counter
 uint16_t I; //index ptr
 uint8_t SP; //stack pointer
-uint16_t stack[16]; //stack
+uint16_t stack[48]; //stack
 uint16_t opcode;
+int carry = 0;
 
 const uint8_t font[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0,
@@ -137,7 +138,7 @@ void chip8_execute_instruction(void) {
         //8XY1 - set VX to VX or VY
         case 0x0001:
         {
-            V[X] = V[X] | V[Y];
+            V[X] |= V[Y];
             break;
         }
         //8XY2 - set VY to VX and VY
@@ -168,32 +169,36 @@ void chip8_execute_instruction(void) {
         case 0x0005:
         {
             V[X] -= V[Y];
-            if (V[X] > V[Y]) { V[0xF] = 1; }
-            else { V[0xF] = 0; }
+            if (V[X] >= V[Y]) { carry = 1; }
+            else { carry = 0; }
+            V[0xF] = carry;
             //V[X] -= V[Y];
             break;
         }
         //8XY6 - shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift
         case 0x0006:
         {
-            V[15] = V[X] & 0x1u;
+            carry = V[X] & 0x1u;
             V[X] = V[X] >> 1;
+            V[0xF] = carry;
             break;
         }
         //8XY7 - set VX to VY minus VX. VF is set to 0 when there's a borrow and 1 when there isn't
         case 0x0007:
         {
             V[X] = V[Y] - V[X];
-            if (V[Y] > V[X]) { V[0xF] = 1; }
-            else { V[0xF] = 0; }
+            if (V[Y] >= V[X]) { carry = 1; }
+            else { carry = 0; }
+            V[0xF] = carry;
             //V[X] = V[Y] - V[X];
             break;
         }
         //8XYE - shift VX left by one. VF is set to the value of the most significant bit of VX before the shift
         case 0x000E:
         {
-            V[0xF] = V[X] >> 7;
+            carry = (V[X] >> 7) & 0x1;
             V[X] <<= 1;
+            V[0xF] = carry;
             break;
         }
         default: break;
