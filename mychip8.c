@@ -156,23 +156,22 @@ void chip8_execute_instruction(void) {
         //8XY4 - adds VX to VY; VF is set to 1 if there's a carry and 0 if there isn't
         case 0x0004:
         {
+            if ((V[X] + V[Y]) > 255)
+                carry = 1;
+            else
+                carry = 0;
             V[X] += V[Y];
-            if (V[Y] > (0xFF - V[X])) {
-                V[0xF] = 1; //carry
-            }
-            else {
-                V[0xF] = 0;
-            }
+            V[0xF] = carry;
             break;
         }
         //8XY5 - VY is subtracted from VX; VF is set to 0 when there's a borrow, and 1 when there isn't
         case 0x0005:
         {
-            V[X] -= V[Y];
+            //V[X] -= V[Y];
             if (V[X] >= V[Y]) { carry = 1; }
             else { carry = 0; }
+            V[X] -= V[Y];
             V[0xF] = carry;
-            //V[X] -= V[Y];
             break;
         }
         //8XY6 - shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift
@@ -186,11 +185,11 @@ void chip8_execute_instruction(void) {
         //8XY7 - set VX to VY minus VX. VF is set to 0 when there's a borrow and 1 when there isn't
         case 0x0007:
         {
-            V[X] = V[Y] - V[X];
+            //V[X] = V[Y] - V[X];
             if (V[Y] >= V[X]) { carry = 1; }
             else { carry = 0; }
+            V[X] = V[Y] - V[X];
             V[0xF] = carry;
-            //V[X] = V[Y] - V[X];
             break;
         }
         //8XYE - shift VX left by one. VF is set to the value of the most significant bit of VX before the shift
@@ -202,7 +201,7 @@ void chip8_execute_instruction(void) {
             break;
         }
         default: break;
-        }
+        }break;
     case 0x9000: //9XY0 - skips the next instruction if VX doesn't equal VY
     {
         if (V[X] != V[Y]) { PC += 2; }
